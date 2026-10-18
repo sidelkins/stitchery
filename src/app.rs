@@ -290,7 +290,7 @@ impl App {
         self.hidden.resize(n, false);
         let mut action: Option<Box<dyn FnOnce(&mut Pattern)>> = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for i in 0..n {
+            for i in 0..n.min(self.design.threads.len()) {
                 let t = &self.design.threads[i];
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.hidden[i], "").on_hover_text("Hide");
@@ -363,7 +363,7 @@ impl App {
                 if !self.hidden.get(c).copied().unwrap_or(false) {
                     match s.cmd {
                         Cmd::Stitch => {
-                            let rgb = self.design.threads[c].rgb;
+                            let rgb = self.design.threads.get(c).map_or([0, 0, 0], |t| t.rgb);
                             let col = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
                             painter.line_segment([q, p], Stroke::new(width, col));
                         }
