@@ -2929,6 +2929,7 @@ dependencies = [
  "anyhow",
  "eframe",
  "rfd",
+ "ttf-parser",
 ]
 
 [[package]]

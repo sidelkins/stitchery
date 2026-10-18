@@ -1,6 +1,7 @@
 //! Editor window: view, simulate, recolor, transform, merge and export designs.
 
 use crate::formats;
+use crate::lettering::{self, FillStyle, FontInfo, TextSpec};
 use crate::pattern::{Cmd, Pattern};
 use crate::threads::Chart;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
@@ -44,6 +45,10 @@ struct App {
     resize_pct: f64,
     rotate_deg: f64,
     status: String,
+    show_text: bool,
+    fonts: Vec<FontInfo>,
+    text: TextSpec,
+    text_preview: Option<Pattern>,
 }
 
 impl App {
@@ -67,6 +72,10 @@ impl App {
             resize_pct: 100.0,
             rotate_deg: 0.0,
             status: "Open a design with File ▸ Open".into(),
+            show_text: false,
+            fonts: vec![],
+            text: TextSpec::default(),
+            text_preview: None,
         };
         for f in files {
             a.load(f, true);
@@ -179,6 +188,11 @@ impl App {
                 }
             });
             ui.menu_button("Design", |ui| {
+                if ui.button("Add lettering…").clicked() {
+                    ui.close_menu();
+                    self.show_text = true;
+                }
+                ui.separator();
                 if ui.button("Center").clicked() {
                     self.edit(Pattern::center);
                 }
@@ -208,6 +222,87 @@ impl App {
                 }
             });
         });
+    }
+
+    fn text_window(&mut self, ctx: &egui::Context) {
+        if !self.show_text {
+            return;
+        }
+        if self.fonts.is_empty() {
+            self.fonts = lettering::system_fonts();
+            if let Some(f) = self.fonts.first() {
+                self.text.font = f.path.clone();
+            }
+        }
+        let mut open = true;
+        let mut changed = false;
+        let mut add = false;
+        egui::Window::new("Lettering").open(&mut open).resizable(false).show(ctx, |ui| {
+            changed |= ui.add(egui::TextEdit::multiline(&mut self.text.text).desired_rows(2)).changed();
+            let current = self.fonts.iter().find(|f| f.path == self.text.font).map_or("(none)", |f| f.name.as_str());
+            egui::ComboBox::from_label("Font").selected_text(current).height(400.0).show_ui(ui, |ui| {
+                for f in &self.fonts {
+                    changed |= ui.selectable_value(&mut self.text.font, f.path.clone(), &f.name).changed();
+                }
+            });
+            egui::Grid::new("text").show(ui, |ui| {
+                ui.label("Height");
+                changed |= ui.add(egui::DragValue::new(&mut self.text.height_mm).range(3.0..=200.0).speed(0.2).suffix(" mm")).changed();
+                ui.end_row();
+                ui.label("Style");
+                ui.horizontal(|ui| {
+                    for (s, n) in [(FillStyle::Satin, "Satin"), (FillStyle::Tatami, "Fill"), (FillStyle::Outline, "Outline")] {
+                        changed |= ui.selectable_value(&mut self.text.style, s, n).changed();
+                    }
+                });
+                ui.end_row();
+                ui.label("Density");
+                changed |= ui.add(egui::DragValue::new(&mut self.text.spacing_mm).range(0.2..=2.0).speed(0.01).suffix(" mm")).changed();
+                ui.end_row();
+                ui.label("Angle");
+                changed |= ui.add(egui::DragValue::new(&mut self.text.angle).range(-90.0..=90.0).suffix("°")).changed();
+                ui.end_row();
+                ui.label("Spacing");
+                changed |= ui.add(egui::DragValue::new(&mut self.text.tracking_mm).range(-10.0..=20.0).speed(0.1).suffix(" mm")).changed();
+                ui.end_row();
+                ui.label("Color");
+                changed |= ui.color_edit_button_srgb(&mut self.text.rgb).changed();
+                ui.end_row();
+            });
+            changed |= ui.checkbox(&mut self.text.underlay, "Underlay").changed();
+            changed |= ui.checkbox(&mut self.text.outline, "Outline run").changed();
+            match &self.text_preview {
+                Some(p) => {
+                    let b = p.bounds();
+                    ui.label(format!("{:.1} × {:.1} mm, {} stitches", b.width() / 10.0, b.height() / 10.0, p.stitch_count()));
+                }
+                None => {
+                    ui.label("Nothing to add");
+                }
+            }
+            add = ui.add_enabled(self.text_preview.is_some(), egui::Button::new("Add to design")).clicked();
+        });
+        if changed || (self.text_preview.is_none() && !self.text.text.is_empty()) {
+            self.text_preview = lettering::render(&self.text).ok();
+        }
+        if add {
+            if let Some(mut t) = self.text_preview.clone() {
+                // Place new lettering centered below the existing design.
+                let tb = t.bounds();
+                if self.design.stitch_count() > 0 {
+                    let b = self.design.bounds();
+                    t.translate((b.min_x + b.max_x) / 2.0 - (tb.min_x + tb.max_x) / 2.0, b.max_y + 50.0 - tb.min_y);
+                } else {
+                    t.center();
+                }
+                self.edit(|d| d.merge(&t));
+                self.fit = true;
+                self.status = format!("Added lettering \"{}\"", self.text.text.lines().next().unwrap_or(""));
+            }
+        }
+        if !open {
+            self.show_text = false;
+        }
     }
 
     fn undo_step(&mut self) {
@@ -426,6 +521,7 @@ impl eframe::App for App {
         }
 
         egui::TopBottomPanel::top("menu").show(ctx, |ui| self.menu(ui));
+        self.text_window(ctx);
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             let total = self.design.stitches.len();
             ui.horizontal(|ui| {
