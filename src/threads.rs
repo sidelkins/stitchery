@@ -91,12 +91,21 @@ pub fn pec_thread(index: u8) -> Thread {
 }
 
 /// Perceptual-ish distance (weighted RGB, "redmean").
-fn distance(a: [u8; 3], b: [u8; 3]) -> f64 {
+pub fn distance(a: [u8; 3], b: [u8; 3]) -> f64 {
     let rm = (a[0] as f64 + b[0] as f64) / 2.0;
     let dr = a[0] as f64 - b[0] as f64;
     let dg = a[1] as f64 - b[1] as f64;
     let db = a[2] as f64 - b[2] as f64;
     ((2.0 + rm / 256.0) * dr * dr + 4.0 * dg * dg + (2.0 + (255.0 - rm) / 256.0) * db * db).sqrt()
+}
+
+/// Index of the palette entry closest to `rgb`, skipping `skip` leading entries.
+pub fn nearest_index<'a>(palette: impl Iterator<Item = &'a [u8; 3]>, skip: usize, rgb: [u8; 3]) -> usize {
+    palette
+        .enumerate()
+        .skip(skip)
+        .min_by(|a, b| distance(*a.1, rgb).total_cmp(&distance(*b.1, rgb)))
+        .map_or(skip, |(i, _)| i)
 }
 
 pub fn nearest_pec(rgb: [u8; 3]) -> u8 {

@@ -1,5 +1,6 @@
 mod app;
 mod formats;
+mod palettes;
 mod pattern;
 mod threads;
 
@@ -12,8 +13,8 @@ usage:
   stitchery info FILE...           print design statistics
   stitchery convert IN OUT         convert between formats (by extension)
 
-read:  dst exp pec pes jef
-write: dst exp pec pes jef svg";
+read:  dst exp pec pes jef vp3 xxx sew hus
+write: dst exp pec pes jef vp3 xxx svg";
 
 fn info(path: &PathBuf) -> Result<()> {
     let p = formats::read(path)?;
