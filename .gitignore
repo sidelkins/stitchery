@@ -1,2 +1,9 @@
 /target
+
 *.pes
+*.dst
+*.jef
+
+*.PES
+*.DST
+*.JEF
